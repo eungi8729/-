@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import koreanize_matplotlib # 한글 폰트 설정을 위해 사용
-import numpy as np # 혼동 행렬 시각화를 위해 numpy 추가 (오류 수정)
+import numpy as np # 혼동 행렬 시각화를 위해 numpy 추가
 
 # 한글 폰트 설정 적용
 koreanize_matplotlib.use_font()
@@ -20,15 +20,31 @@ def load_data():
     # 사용자에게 업로드하도록 하는 등의 방법을 사용해야 합니다.
     # 이 예제에서는 파일이 앱 실행 경로에 있다고 가정합니다.
     try:
+        # 파일이 없으면 FileNotFoundError가 발생합니다.
         df = pd.read_csv("earthquake_data_tsunami.csv")
+        
+        # 파일은 찾았지만 데이터가 비어있을 경우 (빈 DataFrame) 대비
+        if df.empty:
+            st.warning("⚠️ 파일은 찾았지만, 'earthquake_data_tsunami.csv' 파일이 비어 있습니다. 데이터가 없는 경우를 대비한 기본값이 사용됩니다.")
+        
+        # 필수 열이 없는 경우 대비
+        required_columns = ["magnitude", "depth", "latitude", "longitude", "tsunami"]
+        if not all(col in df.columns for col in required_columns):
+            st.error(f"🚨 데이터에 필수 열 {required_columns} 중 일부가 누락되었습니다.")
+            return None
+            
         return df
     except FileNotFoundError:
         st.error("🚨 'earthquake_data_tsunami.csv' 파일을 찾을 수 없습니다. 파일을 앱과 같은 디렉토리에 넣어주세요.")
         return None
+    except Exception as e:
+        st.error(f"🚨 데이터를 로드하는 중 예상치 못한 오류가 발생했습니다: {e}")
+        return None
+
 
 @st.cache_resource
 def train_model(df):
-    if df is None:
+    if df is None or df.empty:
         return None, None, None
 
     # STEP 3. 필요한 열 선택
@@ -36,6 +52,11 @@ def train_model(df):
     y = df["tsunami"]  # 목표 변수
 
     # STEP 4. 학습/테스트 데이터 분리
+    # 데이터가 너무 작아 분리가 불가능한 경우를 대비
+    if len(df) < 2:
+         st.error("🚨 데이터셋의 크기가 너무 작아(2행 미만) 모델 학습을 위한 데이터 분리를 수행할 수 없습니다.")
+         return None, None, None
+         
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     # STEP 5. 모델 학습
@@ -65,26 +86,33 @@ def main():
     st.sidebar.write("쓰나미 발생 여부를 예측하기 위한 지진의 특성을 입력하세요.")
 
     # 사용자 입력 받기
-    # 데이터프레임이 로드되었는지 확인 후 min/max 값을 사용합니다.
+    # 데이터프레임이 로드되었는지 확인 후 min/max 값을 사용하고,
+    # 비어있거나 오류가 있을 경우를 대비해 기본값을 설정합니다.
     if not df.empty:
-      magnitude_min = float(df['magnitude'].min())
-      magnitude_max = float(df['magnitude'].max())
-      depth_min = float(df['depth'].min())
-      depth_max = float(df['depth'].max())
-      latitude_min = float(df['latitude'].min())
-      latitude_max = float(df['latitude'].max())
-      longitude_min = float(df['longitude'].min())
-      longitude_max = float(df['longitude'].max())
-    else: # 데이터가 없는 경우를 대비한 기본값
-      magnitude_min, magnitude_max = 0.0, 10.0
-      depth_min, depth_max = 0.0, 1000.0
-      latitude_min, latitude_max = -90.0, 90.0
-      longitude_min, longitude_max = -180.0, 180.0
+        magnitude_min = float(df['magnitude'].min())
+        magnitude_max = float(df['magnitude'].max())
+        depth_min = float(df['depth'].min())
+        depth_max = float(df['depth'].max())
+        latitude_min = float(df['latitude'].min())
+        latitude_max = float(df['latitude'].max())
+        longitude_min = float(df['longitude'].min())
+        longitude_max = float(df['longitude'].max())
+    else: # 데이터가 없는 경우를 대비한 기본값 및 범위 설정
+        magnitude_min, magnitude_max, magnitude_default = 0.0, 10.0, 5.0
+        depth_min, depth_max, depth_default = 0.0, 1000.0, 50.0
+        latitude_min, latitude_max, latitude_default = -90.0, 90.0, 35.0
+        longitude_min, longitude_max, longitude_default = -180.0, 180.0, 130.0
+    
+    # 위젯 생성 시 min_value, max_value를 명시적으로 전달합니다.
+    magnitude = st.sidebar.slider("진도 (Magnitude)", magnitude_min, magnitude_max, 
+                                  5.0 if 'magnitude_default' not in locals() else magnitude_default)
+    depth = st.sidebar.slider("깊이 (Depth, km)", depth_min, depth_max, 
+                              50.0 if 'depth_default' not in locals() else depth_default)
+    latitude = st.sidebar.number_input("위도 (Latitude)", min_value=latitude_min, max_value=latitude_max, 
+                                       value=35.0 if 'latitude_default' not in locals() else latitude_default, step=0.01)
+    longitude = st.sidebar.number_input("경도 (Longitude)", min_value=longitude_min, max_value=longitude_max, 
+                                        value=130.0 if 'longitude_default' not in locals() else longitude_default, step=0.01)
 
-    magnitude = st.sidebar.slider("진도 (Magnitude)", magnitude_min, magnitude_max, 5.0)
-    depth = st.sidebar.slider("깊이 (Depth, km)", depth_min, depth_max, 50.0)
-    latitude = st.sidebar.number_input("위도 (Latitude)", latitude_min, latitude_max, 35.0, step=0.01)
-    longitude = st.sidebar.number_input("경도 (Longitude)", longitude_min, longitude_max, 130.0, step=0.01)
 
     # 예측 버튼
     if st.sidebar.button("쓰나미 예측 실행"):
@@ -93,18 +121,21 @@ def main():
                                      columns=["magnitude", "depth", "latitude", "longitude"])
 
         # 예측 수행
-        prediction = model.predict(input_data)[0]
-        prediction_proba = model.predict_proba(input_data)
+        try:
+            prediction = model.predict(input_data)[0]
+            prediction_proba = model.predict_proba(input_data)
 
-        st.subheader("📊 예측 결과")
-        if prediction == 1:
-            st.success("## ⚠️ 쓰나미 **발생 예측**!")
-            st.write(f"**쓰나미 발생 확률:** **{prediction_proba[0][1]*100:.2f}%**")
-        else:
-            st.info("## ✅ 쓰나미 **미발생 예측**")
-            st.write(f"**쓰나미 미발생 확률:** **{prediction_proba[0][0]*100:.2f}%**")
+            st.subheader("📊 예측 결과")
+            if prediction == 1:
+                st.success("## ⚠️ 쓰나미 **발생 예측**!")
+                st.write(f"**쓰나미 발생 확률:** **{prediction_proba[0][1]*100:.2f}%**")
+            else:
+                st.info("## ✅ 쓰나미 **미발생 예측**")
+                st.write(f"**쓰나미 미발생 확률:** **{prediction_proba[0][0]*100:.2f}%**")
 
-        st.markdown("---")
+            st.markdown("---")
+        except Exception as e:
+            st.error(f"🚨 예측 수행 중 오류가 발생했습니다: {e}")
 
 
     # 3. 모델 분석 섹션 (탭 구성)
@@ -113,11 +144,11 @@ def main():
 
     with tab1:
         st.subheader("모델 평가 결과")
-        if model and X_test is not None:
+        if model and X_test is not None and not X_test.empty:
             # STEP 6. 예측 및 평가
             y_pred = model.predict(X_test)
             accuracy = accuracy_score(y_test, y_pred)
-            report = classification_report(y_test, y_pred, output_dict=True)
+            report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
             cm = confusion_matrix(y_test, y_pred)
 
             st.metric("테스트 데이터 정확도 (Accuracy)", f"{accuracy*100:.2f}%")
@@ -131,31 +162,42 @@ def main():
             cax = ax.matshow(cm, cmap=plt.cm.Blues)
             plt.title('혼동 행렬', y=1.1)
             fig.colorbar(cax)
-            ax.set_xticklabels([''] + [0, 1])
-            ax.set_yticklabels([''] + [0, 1])
+            
+            # 축 레이블 설정 (tsunami는 0 또는 1이므로)
+            ax.set_xticks(np.arange(cm.shape[1]))
+            ax.set_yticks(np.arange(cm.shape[0]))
+            ax.set_xticklabels([0, 1])
+            ax.set_yticklabels([0, 1])
+            
             plt.xlabel('예측 값 (Predicted)')
             plt.ylabel('실제 값 (Actual)')
             for (i, j), val in np.ndenumerate(cm):
-                ax.text(j, i, f'{val}', ha='center', va='center', color='red' if i == j else 'black')
+                ax.text(j, i, f'{val}', ha='center', va='center', 
+                        color='white' if cm.max() / 2 < val else 'black') # 대비를 위해 텍스트 색상 변경
             st.pyplot(fig)
             
             st.markdown("> **레이블:** '0'은 쓰나미 미발생, '1'은 쓰나미 발생을 의미합니다.")
+        else:
+             st.info("테스트 데이터가 없거나 모델이 학습되지 않았습니다.")
 
 
     with tab2:
         st.subheader("특성 중요도 시각화")
-        # STEP 7. 중요 변수 시각화
-        importances = model.feature_importances_
-        feature_names = X_test.columns
+        if model and X_test is not None and not X_test.empty:
+            # STEP 7. 중요 변수 시각화
+            importances = model.feature_importances_
+            feature_names = X_test.columns
 
-        # Matplotlib을 사용하여 시각화
-        fig, ax = plt.subplots()
-        ax.bar(feature_names, importances)
-        ax.set_title("Feature Importance (특성이 쓰나미 예측에 미치는 영향)")
-        ax.set_ylabel("중요도")
-        ax.tick_params(axis='x', rotation=45)
-        plt.tight_layout()
-        st.pyplot(fig) # Streamlit에 Matplotlib 차트 표시 
+            # Matplotlib을 사용하여 시각화
+            fig, ax = plt.subplots()
+            ax.bar(feature_names, importances)
+            ax.set_title("Feature Importance (특성이 쓰나미 예측에 미치는 영향)")
+            ax.set_ylabel("중요도")
+            ax.tick_params(axis='x', rotation=45)
+            plt.tight_layout()
+            st.pyplot(fig) # Streamlit에 Matplotlib 차트 표시 
+        else:
+             st.info("모델 학습 데이터가 없어 특성 중요도를 표시할 수 없습니다.")
 
 
     with tab3:
@@ -175,4 +217,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
