@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import koreanize_matplotlib # 한글 폰트 설정을 위해 사용
+import numpy as np # 혼동 행렬 시각화를 위해 numpy 추가 (오류 수정)
 
 # 한글 폰트 설정 적용
 koreanize_matplotlib.use_font()
@@ -31,7 +32,7 @@ def train_model(df):
         return None, None, None
 
     # STEP 3. 필요한 열 선택
-    X = df[["magnitude", "depth", "latitude", "longitude"]]   # 입력 변수
+    X = df[["magnitude", "depth", "latitude", "longitude"]]    # 입력 변수
     y = df["tsunami"]  # 목표 변수
 
     # STEP 4. 학습/테스트 데이터 분리
@@ -64,16 +65,32 @@ def main():
     st.sidebar.write("쓰나미 발생 여부를 예측하기 위한 지진의 특성을 입력하세요.")
 
     # 사용자 입력 받기
-    magnitude = st.sidebar.slider("진도 (Magnitude)", float(df['magnitude'].min()), float(df['magnitude'].max()), 5.0)
-    depth = st.sidebar.slider("깊이 (Depth, km)", float(df['depth'].min()), float(df['depth'].max()), 50.0)
-    latitude = st.sidebar.number_input("위도 (Latitude)", float(df['latitude'].min()), float(df['latitude'].max()), 35.0, step=0.01)
-    longitude = st.sidebar.number_input("경도 (Longitude)", float(df['longitude'].min()), float(df['longitude'].max()), 130.0, step=0.01)
+    # 데이터프레임이 로드되었는지 확인 후 min/max 값을 사용합니다.
+    if not df.empty:
+      magnitude_min = float(df['magnitude'].min())
+      magnitude_max = float(df['magnitude'].max())
+      depth_min = float(df['depth'].min())
+      depth_max = float(df['depth'].max())
+      latitude_min = float(df['latitude'].min())
+      latitude_max = float(df['latitude'].max())
+      longitude_min = float(df['longitude'].min())
+      longitude_max = float(df['longitude'].max())
+    else: # 데이터가 없는 경우를 대비한 기본값
+      magnitude_min, magnitude_max = 0.0, 10.0
+      depth_min, depth_max = 0.0, 1000.0
+      latitude_min, latitude_max = -90.0, 90.0
+      longitude_min, longitude_max = -180.0, 180.0
+
+    magnitude = st.sidebar.slider("진도 (Magnitude)", magnitude_min, magnitude_max, 5.0)
+    depth = st.sidebar.slider("깊이 (Depth, km)", depth_min, depth_max, 50.0)
+    latitude = st.sidebar.number_input("위도 (Latitude)", latitude_min, latitude_max, 35.0, step=0.01)
+    longitude = st.sidebar.number_input("경도 (Longitude)", longitude_min, longitude_max, 130.0, step=0.01)
 
     # 예측 버튼
     if st.sidebar.button("쓰나미 예측 실행"):
         # 입력 데이터를 DataFrame 형태로 변환
         input_data = pd.DataFrame([[magnitude, depth, latitude, longitude]],
-                                  columns=["magnitude", "depth", "latitude", "longitude"])
+                                     columns=["magnitude", "depth", "latitude", "longitude"])
 
         # 예측 수행
         prediction = model.predict(input_data)[0]
@@ -157,5 +174,5 @@ def main():
         )
 
 if __name__ == "__main__":
-    import numpy as np # 혼동 행렬 시각화를 위해 numpy 추가
     main()
+    
